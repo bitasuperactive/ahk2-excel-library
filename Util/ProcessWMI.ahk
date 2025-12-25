@@ -1,0 +1,121 @@
+#Requires AutoHotkey v2.0
+#Include "Utils.ahk"
+
+/************************************************************************
+ * @brief
+ * Clase que monitoriza la creación y eliminación de proceso individuales.
+ * Para ello utiliza eventos WMI (__InstanceCreationEvent y __InstanceDeletionEvent)
+ * sin bloquear el hilo principal.
+ *
+ * Esta clase se suscribe en modo asíncrono a WMI mediante SWbemSink,
+ * ejecutando los callbacks indicados cuando el proceso objetivo aparece
+ * o desaparece.
+ * 
+ * Utilizar Dispose() para liberar los recursos.
+ * 
+ * Ejemplo de uso:
+ * @code
+ * ProcessWMIWatcher("notepad.exe", ProcessWMIEventHandler((\*) => MsgBox("Proceso creado"), (\*) => MsgBox("Proceso terminado")))
+ * @endcode
+ * 
+ * @author bitasuperactive
+ * @date 17/12/2025
+ * @version 1.0.0
+ * @see null
+ * @note Dependencias:
+ * - Utils.ahk
+ ***********************************************************************/
+class ProcessWMIWatcher
+{
+    /**
+     * @public
+     * Establece un callback para la creación y destrucción del proceso indicado.
+     * 
+     * (!) Si no se libera adecuadamente la instancia, se pueden saturar los eventos WMI
+     * generando una infracción de cuotas.
+     * 
+     * @param {String} pName Nombre del proceso a escuchar (debe terminar en ".exe").
+     * @param {ProcessWMIEventHandler} handler Manejador para los eventos de ejecución y finalización del proceso.
+     * @throws {Error} (0x8004106C) Si se produce una infracción de cuotas de WMI.
+     */
+    __New(pName, handler)
+    {
+        if (InStr(pName, ' ') || !InStr(pName, ".exe"))
+            throw ValueError('El nombre del proceso "' pName '" no es válido.')
+        if !(handler is ProcessWMIEventHandler)
+            throw ValueError('Se requiere un EventHandler de la clase "' ProcessWMIEventHandler.Prototype.__Class '".')
+            
+        OnExit((*) => this.Dispose()) ;// Se debe implementar así para no perder la referencia de la instancia.
+
+        this.pName := pName
+        this._wmi := ComObjGet("winmgmts:")
+        this._sink := ComObject("WbemScripting.SWbemSink")
+        ComObjConnect(this._sink, handler)
+        
+        command := "WITHIN 1  WHERE TargetInstance ISA 'Win32_Process' AND TargetInstance.Name = '" this.pName "'"
+        this._wmi.ExecNotificationQueryAsync(this._sink, "SELECT * FROM __InstanceCreationEvent " command)
+        this._wmi.ExecNotificationQueryAsync(this._sink, "SELECT * FROM __InstanceDeletionEvent " command)
+    }
+
+    /**
+     * @public
+     * Cancela la suscripción a eventos WMI y desconecta el sink.
+     */
+    Dispose()
+    {
+        try ComObjConnect(this._sink)
+        try this._sink.Cancel()
+        try this._wmi.CancelAsyncCall(this._sink)
+    }
+}
+
+/************************************************************************
+ * @description 
+ * Clase encargada de gestionar los eventos WMI asociados a la creación y eliminación
+ * de un proceso específico. Esta clase actúa como "manejador" (event sink) para los 
+ * eventos enviados por WMI mediante el objeto SWbemSink utilizado en ProcessWMIWatcher.
+ * @author bitasuperactive
+ * @date 17/12/2025
+ * @version 1.0.0
+ * @see null
+ * @requires Utils.ahk
+ ***********************************************************************/
+class ProcessWMIEventHandler
+{
+    /**
+     * Crea un manejador para los eventos de WMI para ProcessWMIWatcher.
+     * @param {Func<Boolean>} callback Función ejecutada al crearse o terminar un proceso.
+     * Recibe un parámetro Boolean que será Verdadero si el proceso ha sido creado, o Falso
+     * si ha sido finalizado.
+     */
+    __New(callback)
+    {
+        if (!Utils.IsFunc(callback) || callback.MinParams != 2)
+            throw ValueError('El callback no es válido.')
+
+        this._callback := callback
+    }
+
+    /**
+     * @private
+     * Método invocado automáticamente por WMI cuando ocurre un evento.
+     * @param {SWbemObject} Obj Contiene la información del evento.
+     */
+    OnObjectReady(obj, *)
+    {
+        TI := obj.TargetInstance
+        switch obj.Path_.Class
+        {
+            case "__InstanceCreationEvent":
+            {
+                this._callback(true)
+            }
+            case "__InstanceDeletionEvent":
+            {
+                ;// El número de procesos debe ser 0
+                if (!ProcessExist(TI.Name))
+                    this._callback(false)
+            }
+        }
+    }
+}
