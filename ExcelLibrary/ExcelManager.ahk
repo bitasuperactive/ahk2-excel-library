@@ -358,10 +358,6 @@ class ExcelManager
      * @private
      * Ejecuta y/u obtiene el COM del proceso activo de Microsoft Excel
      * y conecta el manejador de eventos para su aplicación.
-     * 
-     * @note Si se requiere ejecutar Microsoft Excel, minimizará temporalmente su ventana para 
-     * forzar la creación del COM (no entiendo por qué funciona así).
-     * 
      * @returns {ComObject} Common Object Model para la instancia activa de Microsoft Excel.
      * @throws {TargetError} Si no ha sido posible iniciar Microsoft Excel automáticamente.
      * @throws {Error} (0x80004002) Si Microsoft Excel ha rechazado la conexión a su interfaz.
@@ -369,13 +365,25 @@ class ExcelManager
     static _GetExcelCOM()
     {
         if (!ProcessExist("EXCEL.EXE") || WinGetCount("ahk_class XLMAIN") = 0) {  ; Ventana activa de Excel
-            try Run("EXCEL.EXE")
+            try {
+                Run("EXCEL.EXE")
+                activeHwnd := WinGetID("A")
+            }
             catch Error as err
                 throw TargetError("No ha sido posible iniciar Microsoft Excel automáticamente, ábrelo y crea un libro en blanco.", -1, err)
 
-            ;// Esperar hasta 10 segundos para completar la conexión
+            ;// Realizar hasta 10 intentos de conexión
             Loop 10 {
                 try {
+                    ;// Esperar a la ventana de Excel
+                    if (WinGetCount("ahk_class XLMAIN") = 0) {
+                        Sleep 1000
+                        continue
+                    }
+                    ;// Recuperar el foco para permitir la creación del COM
+                    WinActivate(activeHwnd)
+                    WinWaitActive(activeHwnd)
+
                     excelCOM := ComObjActive("Excel.Application")
 
                     ;// Crear un libro en blanco
@@ -388,17 +396,11 @@ class ExcelManager
                     return excelCOM
                 }
                 catch {
-                    ;// Hay veces en que a Excel no le apetece crear su interfaz COM y hay que maniobrar...
+                    ;// Forzar creación de un libro en blanco
                     if (WinGetCount("ahk_class XLMAIN") > 0) {
-                        if (WinGetMinMax("ahk_class XLMAIN") != -1) {
-                            ;// Forzar creación del COM, minimizando...
-                            WinMinimize("ahk_class XLMAIN")
-                        } else {
-                            ;// Forzar creación de un libro en blanco
                             WinActivate("ahk_class XLMAIN")
                             WinWaitActive("ahk_class XLMAIN")
                             Send "{Escape}"
-                        }
                     }
                     Sleep 1000
                 }
@@ -407,7 +409,7 @@ class ExcelManager
 
         try {
             excelCOM := ComObjActive("Excel.Application")
-            ComObjConnect(excelCOM, ExcelEventController.ApplicationEventHandler)            ;// Crear un libro en blanco si el proceso quedó activo sin ventanas
+            ComObjConnect(excelCOM, ExcelEventController.ApplicationEventHandler)
             
             ;// Asegurarse de que exista un libro creado
             if (excelCOM.Workbooks.Count = 0) {
