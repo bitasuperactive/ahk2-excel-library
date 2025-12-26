@@ -2,19 +2,20 @@
 #Include "..\..\Util\Utils.ahk"
 
 /************************************************************************
- * @class WorkbookWrapper
- * @brief Funciones dedicadas a la administración general de
+ * @brief Clase envoltorio que permite la administración general de
  * libros de trabajo y sus hojas de cálculo.
  * 
- * Es capaz de escapar la edición del usuario si impide la conexión con
+ * - Es capaz de escapar la edición del usuario si impide la conexión con
  * la interfaz de Excel.
  * 
+ * @note La hoja de cálculo objetivo solo puede contener una tabla como máximo.
+ * 
  * @author bitasuperactive
- * @date 21/12/2025
- * @version 0.9.0-Beta
- * @see null
- * @note Dependencias:
+ * @date 25/12/2025
+ * @version 0.9.1-Beta
+ * @warning Dependencias:
  * - Utils.ahk
+ * @see https://github.com/bitasuperactive/ahk2-excel-library/blob/master/ExcelLibrary/ExcelBridge/WorkbookWrapper.ahk
  ***********************************************************************/
 class WorkbookWrapper
 {
@@ -31,15 +32,13 @@ class WorkbookWrapper
 
     /**
      * @public
-     * Nombre del libro de trabajo objetivo.
-     * @type {String}
+     * {String} Nombre del libro de trabajo objetivo.
      */
     Name => this._name ;
 
     /**
      * @public
-     * Nombre de la hoja de cálculo objetivo.
-     * @type {String}
+     * {String} Nombre de la hoja de cálculo objetivo.
      */
     TargetSheetName => this._targetSheetName ;
 
@@ -48,13 +47,14 @@ class WorkbookWrapper
      * Crea un envoltorio para la administración de un libro de trabajo específico
      * y una de sus hojas de cálculo.
      * 
-     * - Envuelve los datos preexistentes en una tabla para facilitar su manejo.
+     * - Envuelve los datos preexistentes en una tabla para facilitar su delimitación.
      * 
      * @param {Microsoft.Office.Interop.Excel.Workbook} workbook Libro de trabajo objetivo.
      * @param {Microsoft.Office.Interop.Excel.Worksheet} targetSheet (Opcional) Hoja de cálculo objetivo.
      * Por defecto, será la hoja de cálculo activa en el libro.
-     * @throws {TargetError} Si el libro de trabajo objetivo se encuentra cerrado.
-     * @throws {Error} Si Excel rechaza la conexión a su interfaz.
+     * @throws {TargetError} (0x80010108) Si el libro de trabajo objetivo se encuentra cerrado.
+     * @throws {Error} (0x80010001) Si Microsoft Excel rechaza la conexión a su interfaz.
+     * @throws {ValueError} Si existe más de tabla definida en la hoja de cálculo objetivo.
      */
     __New(workbook, targetSheet?)
     {
@@ -69,7 +69,7 @@ class WorkbookWrapper
         
         this._workbook := workbook
         this._name := workbook.Name
-        this._targetSheet := (IsSet(targetSheet)) ? targetSheet : workbook.ActiveSheet
+        this._targetSheet := IsSet(targetSheet) ? targetSheet : workbook.ActiveSheet
         this._targetSheetName := this._targetSheet.Name
 
         this._WrapTargetRangeInTable()
@@ -85,7 +85,8 @@ class WorkbookWrapper
         try {
             this.__ThrowIfWorkbookIsInvalid()
             return true
-        } catch {
+        } 
+        catch {
             return false
         }
     }
@@ -120,10 +121,10 @@ class WorkbookWrapper
 
     /**
      * @public
-     * Comprueba si no hay rango objetivo: No hay tablas definidas ni valor en la celda "A1".
+     * Comprueba si la hoja de cálculo objetivo está vacía.
      * @returns {Boolean}
      */
-    IsTargetRangeEmpty() => this._GetTargetRange().Address = "$A$1" ;
+    IsTargetSheetEmpty() => this._GetTargetRange().Value2 = "" ;
 
     /**
      * @public
@@ -140,26 +141,9 @@ class WorkbookWrapper
     }
 
     /**
-     * @public 
-     * Desactiva o reactiva las optimizaciones de rendimiento en Excel.
-     * 
-     * Principalmente, mejora el rendimiento de la escritura, llegando a
-     * multiplificar por cinco su velocidad.
-     * @param {Integer} i <1> para optimizar, <0> para restablecer.
-     */
-    SpeedupIO(i)
-    {
-        this._workbook.Application.EnableEvents := !i
-        this._workbook.Application.ScreenUpdating := !i
-        this._workbook.Application.Calculation := (i = 0) ? -4105 : -4135
-    }
-
-    /**
      * @public
      * Señala con un color amarillo la fila indicada y restablece la anterior.
-     * 
      * Si se indica una fila ya señalada, restablece su color.
-     * 
      * @param {Integer} row Fila a señalizar o restablecer.
      */
     HighlightRow(row)
@@ -167,23 +151,25 @@ class WorkbookWrapper
         if (row < 1)
             throw ValueError("La fila {" row "} no es válida.")
 
+        sheet := this._targetSheet
+        lastHighlightedRow := this.__lastHighlightedRow
         BGR_HIGHTLIGHT := 0x00FFFF  ; Código hex BGR amarillo
         BGR_NONE := -4142
-        reset := (row = this.__lastHighlightedRow)
+        reset := (row = lastHighlightedRow)
 
         ;// Restablecer la fila anterior
-        if (!reset && this.__lastHighlightedRow != 0) {
-            this._targetSheet.Rows[this.__lastHighlightedRow].Interior.Color := BGR_NONE
+        if (!reset && lastHighlightedRow != 0) {
+            sheet.Rows[lastHighlightedRow].Interior.Color := BGR_NONE
         }
-        this._targetSheet.Rows[row].Interior.Color := reset ? BGR_NONE : BGR_HIGHTLIGHT
-        this.__lastHighlightedRow := reset ? 0 : row
+        sheet.Rows[row].Interior.Color := reset ? BGR_NONE : BGR_HIGHTLIGHT
+        lastHighlightedRow := reset ? 0 : row
     }
 
     /**
      * @public 
-     * Valida las cabeceras de la tabla objetivo conforme a la colección facilitada.
+     * Normaliza las cabeceras de la tabla objetivo y las valida respecto a la colección facilitada.
      * @param {Array<String>} expectedHeaders Colección de los nombres de las cabeceras esperadas.
-     * @param {VarRef<Array<String>>} missingHeaders (OUT Opcional) Collección de los nombres de las cabeceras faltantes.
+     * @param {VarRef<Array<String>>} missingHeaders (OUT) Colección de los nombres de las cabeceras faltantes.
      * @returns {Boolean} Verdadero si la tabla contiene todas las cabeceras, Falso en su defecto.
      */
     ValidateHeaders(expectedHeaders, &missingHeaders := unset)
@@ -195,8 +181,6 @@ class WorkbookWrapper
             expectedHeaders := [expectedHeaders]
         if (expectedHeaders.Length = 0)
             return true
-        ; if (expectedHeaders.Length > 0 && this.IsUsedRangeEmpty())
-        ;     throw UnsetError('El rango objetivo "' this._GetTargetRange().Address '" está vacío.')
         if (Type(expectedHeaders[1]) != "String")
             throw TypeError("Se esperaba una colección de String, pero se ha recibido: " Type(expectedHeaders[1]))
         
@@ -222,37 +206,8 @@ class WorkbookWrapper
     }
 
     /**
-     * @private 
-     * **EN DESUSO:**
-     * Valida que el libro de trabajo objetivo se encuentre abierto y accesible.
-     * @param {Microsoft.Office.Interop.Excel.Workbook} workbook (Opcional) Libro de trabajo a validar.
-     * Por defecto es el libro de trabajo objetivo.
-     * @throws {TargetError} Si el libro se encuentra cerrado.
-     * @throws {Error} Si Excel rechaza la conexión a su interfaz.
-     */
-    __ThrowIfWorkbookIsInvalid(workbook := this._workbook)
-    {
-        if (workbook = 0)
-            throw ValueError("No se ha establecido un libro de trabajo objetivo.")
-        if !(workbook is ComObject) ; No es necesario comprobar el tipo aquí
-            throw TypeError('Se esperaba el tipo ComObject, pero se ha recibido: ' Type(workbook))
-
-        try {
-            workbook.Name
-        } catch Error as err {
-            ;// El objeto ha sido desconectado de sus clientes.
-            if (InStr(err.Message, "0x80010108"))
-                throw TargetError("(0x80010108) El libro de trabajo solicitado ha sido cerrado.", -1, err)
-            ;// Excel ha rechazado la conexión a sus objetos.
-            if (InStr(err.Message, "0x80010001"))
-                throw Error("(0x80010001) Excel ha rechazado la conexión a su interfaz.", -1, err)
-            throw err
-        }
-    }
-
-    /**
      * @protected
-     * Bloquea el libro de trabajo objetivo impidiendo su cierre y la manipulación del número de hojas.
+     * Bloquea el libro de trabajo objetivo impidiendo la manipulación del número de hojas.
      * @param {Boolean} lock Si bloquear o desbloquear.
      */
     _LockWorkbook(lock)
@@ -264,9 +219,8 @@ class WorkbookWrapper
 
     /**
      * @protected 
-     * Bloquea o desbloquea la edición y selección de las celdas de la
-     * hoja de cálculo objetivo.
-     * 
+     * Bloquea la hoja de cálculo objetivo impidiendo la modificación 
+     * y la selección de sus celdas.
      * @param {Boolean} lock Veradero para bloquear, Falso para desbloquear.
      */
     _LockSheet(lock)
@@ -286,10 +240,9 @@ class WorkbookWrapper
      * @protected 
      * Elimina las filas vacías del rango objetivo (contempla fórmulas).
      * 
-     * Para las tablas, hay que rellenar al menos una celda para
-     * Auto-Expandir la tabla con nuevos datos. Por ello, si la tabla
-     * carece de contenido, rellenará la primera fila de valores con
-     * "null".
+     * Las tablas deben contener al menos un valor para auto-expandirse. 
+     * Por ello, si la tabla carece de contenido, se rellenará la primera 
+     * fila con el valor "null".
      */
     _DeleteEmptyRows()
     {
@@ -297,59 +250,45 @@ class WorkbookWrapper
         rows := range.Rows
         rowCount := rows.Count
         maxRowCount := rowCount
+
         Loop rowCount {
-            index := maxRowCount - A_Index + 1 ; Invertido
+            index := maxRowCount - A_Index + 1 ; Orden invertido
             row := rows[index]
             isThereAnyValue := row.Find("*",, xlFormulas:=-4123)
             if (!isThereAnyValue) {
-                ;// No se puede borrar la última fila de valores de una tabla
+                ;// No se puede borrar la última fila del contenido de una tabla
                 if (index = 2 && rowCount = 2) {
-                    ;// 
-                    ;// 
                     row.Value2 := "null"
                     break
                 }
-                try {
-                    row.EntireRow.Delete()
-                    rowCount--
-                }
+                row.EntireRow.Delete()
+                rowCount--
             }
         }
     }
 
     /**
      * @protected 
-     * Obtiene el rango de la primera tabla si existiera,
-     * o el rango **continuo** utilizado.
-     * 
+     * Obtiene el rango de la primera tabla si existiera, o el 
+     * rango **continuo** utilizado.
      * @returns {Microsoft.Office.Interop.Excel.Range} Rango objetivo.
      * @throws {ValueError} Si existe más de tabla definida en la hoja de cálculo objetivo.
      */
     _GetTargetRange()
     {
         sheet := this._targetSheet
-
         if (sheet.ListObjects.Count > 1)
             throw ValueError("Existe más de tabla definida en la hoja de cálculo objetivo. Utiliza otra hoja o borra las tablas sobrantes.")
 
         return (sheet.ListObjects.Count >= 1) ? sheet.ListObjects[1].Range : sheet.UsedRange.CurrentRegion
-        
-        ; if (sheet.ListObjects.Count >= 1) {
-        ;     return sheet.ListObjects[1].Range ; Table #1
-        ; }
-        ; else {
-        ;     if (sheet.Cells(1,1).Value2) { ; A1 value
-        ;         return sheet.UsedRange.CurrentRegion
-        ;     }
-        ;     return sheet.Range("A1")
-        ; }
     }
 
     /**
      * @protected
      * Envuelve el rango objetivo en una tabla si no existe ninguna.
-     * @param {Integer} hasHeaders La cabecera tiene encabezados.
-     * Debe ser un valor XlYesNoGuess (1,2,0). Por defecto es 0 (guess).
+     * @param {Integer} hasHeaders Si el rango tiene encabezados.
+     * Debe ser un valor XlYesNoGuess (1,2,0). Por defecto es 0 (Guess).
+     * @throws {ValueError} Si existe más de tabla definida en la hoja de cálculo objetivo.
      */
     _WrapTargetRangeInTable(hasHeaders := 0)
     {
@@ -358,16 +297,17 @@ class WorkbookWrapper
         if (hasHeaders < 0 || hasHeaders > 2)
             throw ValueError("Se esperaba un valor entre 0 y 2, pero se ha recibido: " hasHeaders)
         
+        sheet := this._targetSheet
         targetRange := this._GetTargetRange()
         if (targetRange.Value2 = "")
             return
-        if (this._targetSheet.ListObjects.Count > 0)
+        if (sheet.ListObjects.Count > 0)
             return
         
         ;// Se requiere desbloquear la hoja para crear una tabla
         sheetWasLocked := this.IsSheetLocked()
         this._LockSheet(false)
-        this._targetSheet.ListObjects.Add(
+        sheet.ListObjects.Add(
             XlListObjectSourceType := 1, ; xlSrcRange
             targetRange,
             ,
@@ -381,7 +321,6 @@ class WorkbookWrapper
      * Obtiene el contenido de una fila del rango objetivo como un SafeArray COM.
      *
      * Excel Interop presenta un comportamiento inconsistente al leer valores:
-     * 
      *  - Si la fila contiene una única columna o está vacía, devuelve un valor.
      *  - Si contiene varias columnas, devuelve un SafeArray.
      *
@@ -417,14 +356,13 @@ class WorkbookWrapper
 
     /**
      * @protected
-     * Normaliza las cabeceras de la tabla objetivo conforme a __NormalizeHeader.
-     * @see WorkbookWrapper.__NormalizeHeader
+     * Normaliza las cabeceras de la tabla objetivo conforme a `__NormalizeHeader`.
+     * @see WorkbookWrapper::__NormalizeHeader
      */
     _NormalizeTableHeaders()
     {
         headerRow := this._GetRowSafeArray(1)
 
-        ;// Comprobar si es necesario normalizar
         Loop headerRow.MaxIndex(2) {
             header := headerRow[1, A_Index]
             normalizedHeader := WorkbookWrapper.__NormalizeHeader(header)
@@ -436,23 +374,23 @@ class WorkbookWrapper
 
     /**
      * @protected 
-     * Normaliza los nombres de las propiedades del objeto indicado conforme a __NormalizeHeader.
+     * Normaliza los nombres de las propiedades del objeto indicado conforme a `__NormalizeHeader`.
      * 
      * Se utiliza para mantener la coherencia entre las tablas y los objetos AHK.
      * 
      * @param {Object} obj Objeto a normalizar.
      * @returns {Object} Objeto normalizado.
-     * @see WorkbookWrapper.__NormalizeHeader
+     * @see WorkbookWrapper::__NormalizeHeader
      */
     static _NormalizeObjProps(obj)
     {
         if (!IsObject)
             throw TypeError('Se esperaba un Object, pero se ha recibido, pero se ha recibido: ' Type(obj))
         
+        ;// Deben recrearse todas las propiedades del objeto para no desordenar un posible OrObject
         for prop in obj.OwnProps() {
-            if (prop == this.__NormalizeHeader(prop))
-                continue
-            
+            if (IsObject(prop))
+                throw TypeError("Las propiedades del objeto deben ser valores primitivos, pero contiene: " Type(prop))
             normalizedProp := this.__NormalizeHeader(prop)
             value := obj.%prop%
             obj.DeleteProp(prop)
@@ -495,6 +433,24 @@ class WorkbookWrapper
     }
 
     /**
+     * @protected 
+     * @deprecated En desuso porque con el rendimiento actual la mejora es 
+     * despreciable.
+     * 
+     * Desactiva o reactiva las optimizaciones de rendimiento en Excel.
+     * Principalmente, mejora el rendimiento de la escritura.
+     * 
+     * @param {Integer} i `1` para optimizar, `0` para restablecer.
+     */
+    _SpeedupIO(i)
+    {
+        workbook := this._workbook
+        workbook.Application.EnableEvents := !i
+        workbook.Application.ScreenUpdating := !i
+        workbook.Application.Calculation := (i = 0) ? -4105 : -4135
+    }
+
+    /**
      * @private
      * Una cabecera normalizada debe estar en mayúsculas, sin tildes y con barras bajas
      * en vez de espacios.
@@ -510,25 +466,52 @@ class WorkbookWrapper
     }
 
     /**
+     * @private 
+     * Valida que el libro de trabajo se encuentre abierto y accesible.
+     * @param {Microsoft.Office.Interop.Excel.Workbook} workbook (Opcional) Libro de trabajo a validar.
+     * Por defecto es el libro de trabajo objetivo.
+     * @throws {TargetError} (0x80010108) Si el libro se encuentra cerrado.
+     * @throws {Error} (0x80010001) Si Microsoft Excel rechaza la conexión a su interfaz.
+     */
+    __ThrowIfWorkbookIsInvalid(workbook := this._workbook)
+    {
+        if (workbook = 0)
+            throw ValueError("No se ha establecido un libro de trabajo objetivo.")
+        if !(workbook is ComObject) ; No es necesario comprobar el tipo aquí
+            throw TypeError('Se esperaba el tipo ComObject, pero se ha recibido: ' Type(workbook))
+
+        try {
+            workbook.Name
+        } 
+        catch Error as err {
+            if (InStr(err.Message, "0x80010108")) ; El objeto ha sido desconectado de sus clientes
+                throw TargetError("(0x80010108) El libro de trabajo solicitado ha sido cerrado.", -1, err)
+            if (InStr(err.Message, "0x80010001")) ; Excel ha rechazado la conexión a sus objetos
+                throw Error("(0x80010001) Excel ha rechazado la conexión a su interfaz.", -1, err)
+            throw err
+        }
+    }
+
+    /**
      * @private
      * Ejecuta una función controlando la interacción del usuario con Excel
-     * para evitar fallos de automatización durante operaciones críticas.
+     * para evitar fallos de automatización durante sus operaciones con el COM.
      *
      * Si Excel rechaza la llamada COM por estar ocupado (por ejemplo, debido
      * a edición activa de celdas o diálogos modales) tras 30 reintentos en 30 segundos, 
      * esta función envía {ESCAPE} para cancelar la edición en curso y 
      * reintenta la operación una única vez más.
-     * 
-     * Notifica al usuario mediante un TrayTip al escapar la edición.
      *
      * Solo intercepta errores COM conocidos relacionados con Excel ocupado
      * (HRESULT 0x80010001, 0x800AC472). Cualquier otro error se relanza.
+     * 
+     * @note Notifica al usuario mediante un TrayTip al escapar la edición.
      *
      * @param {Func} fun Función a ejecutar. Debe aceptar `this` como primer parámetro.
      * @param {Any} params Parámetros opcionales que se pasarán a la función.
      * @returns {Any} Valor devuelto por la función ejecutada.
      * @throws {Error} Relanza la excepción si el error no es recuperable 
-     * o si los reintentos fallan.
+     * o si todos los reintentos fallan.
      */
     __InvokeExcelSafelyDelayed(fun, params*)
     {

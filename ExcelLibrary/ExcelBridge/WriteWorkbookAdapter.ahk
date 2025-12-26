@@ -4,30 +4,32 @@
 
 /************************************************************************
  * @class WriteWorkbookAdapter
- * @brief Funciones dedicadas a la escritura en libros de trabajo.
+ * @brief Adaptador dedicado a la escritura en libros de trabajo.
  * @author bitasuperactive
- * @date 17/12/2025
- * @version 0.9.0-Beta
+ * @date 25/12/2025
+ * @version 0.9.1-Beta
  * @extends WorkbookWrapper
- * @see null
- * @note Dependencias:
+ * @warning Dependencias:
  * - WorkbookWrapper.ahk
  * - Utils.ahk
+ * @see https://github.com/bitasuperactive/ahk2-excel-library/blob/master/ExcelLibrary/ExcelBridge/WriteWorkbookAdapter.ahk
  ***********************************************************************/
-class WriteWorkbookAdapter extends WorkbookWrapper
+class WriteWorkbookAdapter
 {
     /**
      * @public
      * Crea un adaptor para la escritura en una de las hojas de cálculo
      * de un libro de trabajo específico.
      * 
+     * - Envuelve los datos preexistentes en una tabla para facilitar su delimitación.
      * - Elimina las filas vacías para facilitar la escritura.
      * 
      * @param {Microsoft.Office.Interop.Excel.Workbook} workbook Libro de trabajo objetivo.
      * @param {Microsoft.Office.Interop.Excel.Worksheet} targetSheet (Opcional) Hoja de cálculo objetivo.
      * Por defecto, será la hoja de cálculo activa en el libro objetivo.
-     * @throws {TargetError} Si el libro de trabajo objetivo se encuentra cerrado.
-     * @throws {Error} Si Excel rechaza la conexión a su interfaz.
+     * @throws {TargetError} (0x80010108) Si el libro de trabajo objetivo se encuentra cerrado.
+     * @throws {Error} (0x80010001) Si Microsoft Excel rechaza la conexión a su interfaz.
+     * @throws {ValueError} Si existe más de tabla definida en la hoja de cálculo objetivo.
      */
     __New(workbook, targetSheet?)
     {
@@ -37,20 +39,19 @@ class WriteWorkbookAdapter extends WorkbookWrapper
 
     /**
      * @public
-     * Crea o anexa una tabla, filas o columnas en la hoja de cálculo objetivo.
-     * 
+     * Crea o anexa una tabla, sean solo filas o solo columnas en la hoja de cálculo objetivo.
+     * @warning Si utilizas la clase nativa Object para encapsular los datos a introducir, 
+     * se impondrá un orden alfabético para la inserción de las columnas.
+     * Se recomienda utilizar OrObject.
      * @param {Array<Object>} objArray Colección de objetos literales.
-     * @param {Array<String>} expectedHeaders (Opcional) Collección de los nombres 
+     * @param {Array<String>} expectedHeaders (Opcional) Colección de los nombres 
      * para las cabeceras requeridas.
-     * @throws {TargetError} Si el libro de trabajo objetivo se encuentra cerrado.
-     * @throws {Error} Si Excel rechaza la conexión al libro de trabajo objetivo.
      * @throws {UnsetError} Si la tabla no tiene alguna de las cabeceras esperadas.
-     * @see WriteWorkbookAdapter::_CreateTable
      */
     AppendTable(objArray, expectedHeaders := [])
     {
         ;// Si no hay datos, crear tabla
-        if (this.IsTargetRangeEmpty()) {
+        if (this.IsTargetSheetEmpty()) {
             this._CreateTable(objArray)
             return
         }
@@ -79,18 +80,17 @@ class WriteWorkbookAdapter extends WorkbookWrapper
             }
         }
 
-        this._NormalizeTableHeaders()
-
+        sheet := this._targetSheet
         ;// Anexar las cabeceras que falten en la tabla
         firstUsedRowIndex := this._GetTargetRange().Row
         firstUsedColIndex := this._GetTargetRange().Column
         headerRow := this._GetRowSafeArray(1)
-        for (header in headerArr) { ;// Los Arrays de Interop son 1-based
+        for (header in headerArr) {
             Loop headerRow.MaxIndex(2) {
-                if (headerRow[1, A_Index] = header)
+                if (headerRow[1, A_Index] = header) ; Los Arrays de Interop son 1-based
                     continue 2
             }
-            nextFreeHeaderCell := this._targetSheet.Cells(
+            nextFreeHeaderCell := sheet.Cells(
                 firstUsedRowIndex, 
                 firstUsedColIndex + this.GetColumnCount()
             )
@@ -98,7 +98,7 @@ class WriteWorkbookAdapter extends WorkbookWrapper
         }
         headerRow := this._GetRowSafeArray(1) ; Actualizar valor
 
-        ;// Calcular filas a añadir (los objetos sin valores no cuentan)
+        ;// Calcular filas a añadir (los objetos sin ningún valor no cuentan)
         rowsToAdd := 0
         for obj in objArray {
             for _, val in obj.OwnProps() {
@@ -126,15 +126,15 @@ class WriteWorkbookAdapter extends WorkbookWrapper
         }
 
         ;// Inserción
-        targetUpperLeftCell := this._targetSheet.Cells(
+        targetUpperLeftCell := sheet.Cells(
             firstUsedRowIndex + this.GetRowCount(),
             firstUsedColIndex
         )
-        targetLowerRightCell := this._targetSheet.Cells(
+        targetLowerRightCell := sheet.Cells(
             targetUpperLeftCell.Row + objArray.Length - 1,
             targetUpperLeftCell.Column + newColCount - 1
         )
-        this._targetSheet.Range(targetUpperLeftCell, targetLowerRightCell).Value2 := safeArray
+        sheet.Range(targetUpperLeftCell, targetLowerRightCell).Value2 := safeArray
         
         this._WrapTargetRangeInTable(1)
     }
@@ -142,11 +142,10 @@ class WriteWorkbookAdapter extends WorkbookWrapper
     /**
      * @public 
      * Rellena los espacios blancos de una fila.
+     * @note Las propiedades del objeto a introducir serán utilizadas para validar 
+     * las cabeceras de la tabla.
      * @param {Integer} row Índice de la fila objetivo.
      * @param {Object} obj Objeto fuente de los datos a utilizar.
-     * 
-     * Sus propiedades también serán utilizadas para validar las cabeceras de la tabla.
-     * 
      * @throws {TargetError} Si la tabla no tiene las mismas cabeceras que propiedades tiene el objeto.
      * @throws {UnsetError} Si la tabla no tiene alguna de las cabeceras esperadas.
      * @throws {ValueError} Si la fila objetivo está fuera del rango utilizado.
@@ -163,6 +162,7 @@ class WriteWorkbookAdapter extends WorkbookWrapper
         if (row < 1 || row > this.GetRowCount())
             throw ValueError('La fila {' row '} está fuera del rango utilizado.')
 
+        obj := WorkbookWrapper._NormalizeObjProps(obj)
         objProps := []
         for prop in obj.OwnProps() 
             objProps.Push(prop)
@@ -187,18 +187,15 @@ class WriteWorkbookAdapter extends WorkbookWrapper
      * @public
      * Elimina la fila solicitada.
      * @param {Integer} row Índice de la fila objetivo.
-     * @param {Object} obj (Opcional) Objeto de validación para la fila objetivo.
-     * Tanto las cabeceras de la tabla deben coincidir con las propiedades del objeto,
-     * como los datos de la tabla coincidir con los valores del mismo.
-     * @param {Array<String>} expectedHeaders (Opcional) Collección de los nombres 
-     * para las cabeceras requeridas.
-     * 
-     * Si solo se requiere validar las cabeceras y no los datos.
-     * 
+     * @param {Object} expectedObj (Opcional) Objeto de validación para la fila objetivo.
+     * Tanto las cabeceras de la tabla como su contenido debe coincidir con las 
+     * propiedades y valores del objeto.
+     * @param {Array<String>} expectedHeaders (Opcional) Colección de los nombres 
+     * para las cabeceras requeridas. Útil si solo se requiere validar las cabeceras y no los datos.
      * @throws {TargetError} Si la fila a eliminar no coincide con el objeto de validación.
      * @throws {UnsetError} Si la tabla no tiene alguna de las cabeceras esperadas.
      */
-    DeleteRow(row, obj?, expectedHeaders := [])
+    DeleteRow(row, expectedObj?, expectedHeaders := [])
     {
         if (Type(row) != "Integer")
             throw TypeError("Se esperaba un Integer pero se ha recibido: " Type(row))
@@ -206,25 +203,21 @@ class WriteWorkbookAdapter extends WorkbookWrapper
             throw ValueError('La fila {' row '} está fuera del rango utilizado.')
         if (row = 1)
             throw ValueError('No es posible eliminar la fila de cabeceras. Utiliza DeleteTable() para eliminar la tabla.')
-        if (IsSet(obj)) {
-            if (!IsObject(obj))
-                throw TypeError("Se esperaba un Object pero se ha recibido: " Type(obj))
-            for (prop in obj.OwnProps())
-                if (IsObject(prop))
-                    throw TypeError("Las propiedades del objeto deben ser valores primitivos pero contiene: " Type(prop))
-        }
+        if (IsSet(expectedObj) && !IsObject(expectedObj))
+            throw TypeError("Se esperaba un Object pero se ha recibido: " Type(expectedObj))
         if (!this.ValidateHeaders(expectedHeaders, &missingHeaders))
             throw UnsetError("La tabla es inválida, no dispone de las siguientes cabeceras requeridas: " Utils.ArrayToString(missingHeaders))
         
         ;// Confirmar la fila a eliminar
-        if (IsSet(obj)) {
+        if (IsSet(expectedObj)) {
+            expectedObj := WorkbookWrapper._NormalizeObjProps(expectedObj)
             headerRow := this._GetRowSafeArray(1)
             targetRow := this._GetRowSafeArray(row)
 
             Loop headerRow.MaxIndex(2) {
                 header := headerRow[1, A_Index]
                 value := targetRow[1, A_Index]
-                if (!ObjHasOwnProp(obj, header) || obj.%header% != value)
+                if (!ObjHasOwnProp(expectedObj, header) || expectedObj.%header% != value)
                     throw TargetError("La fila a eliminar no coincide con el objeto de validación.")
             }
         }
@@ -235,8 +228,8 @@ class WriteWorkbookAdapter extends WorkbookWrapper
 
     /**
      * @public
-     * Elimina todo el rango objeto.
-     * @param {Array<String>} expectedHeaders (Opcional) Collección de los nombres 
+     * Elimina todo el rango objetivo.
+     * @param {Array<String>} expectedHeaders (Opcional) Colección de los nombres 
      * para las cabeceras requeridas.
      * @throws {UnsetError} Si la tabla no tiene alguna de las cabeceras esperadas.
      */
@@ -251,9 +244,10 @@ class WriteWorkbookAdapter extends WorkbookWrapper
     /**
      * @private 
      * Crea una tabla a partir de la colección de objetos indicada.
+     * @warning Si utilizas la clase nativa Object para encapsular los datos a introducir, 
+     * se impondrá un orden alfabético para la inserción de las columnas.
+     * Se recomienda utilizar OrObject.
      * @param {Array<Object>} objArray Colección de objetos literales.
-     * @throws {TargetError} Si el libro de trabajo objetivo se encuentra cerrado.
-     * @throws {Error} Si Excel rechaza la conexión al libro de trabajo objetivo.
      */
     _CreateTable(objArray)
     {
@@ -279,9 +273,9 @@ class WriteWorkbookAdapter extends WorkbookWrapper
             }
         }
 
-        rows := objArray.Length + 1 ;// Más la fila de cabeceras
+        rows := objArray.Length + 1 ; Más la fila de cabeceras
         cols := headerArr.Length
-        safeArray := WorkbookWrapper._CreateInteropArray(rows, cols) ;ComObjArray(VT_VARIANT:=12, rows, cols) ; 0-based
+        safeArray := WorkbookWrapper._CreateInteropArray(rows, cols)
 
         for header in headerArr {
             safeArray[1, A_Index] := header
@@ -303,17 +297,6 @@ class WriteWorkbookAdapter extends WorkbookWrapper
         )
         targetRange := sheet.Range(targetUpperLeftCell, targetLowerRightCell)
         targetRange.Value2 := safeArray
-
-        ;// Se requiere desbloquear la hoja para crear la tabla
-        ; sheetWasLocked := this.IsSheetLocked()
-        ; this._LockSheet(false)
-        ; sheet.ListObjects.Add(
-        ;     XlListObjectSourceType := 1, ; xlSrcRange
-        ;     targetRange,
-        ;     ,
-        ;     XlYesNoGuess := 1 ; Sí tiene encabezados
-        ; )
-        ; this._LockSheet(sheetWasLocked)
         
         this._WrapTargetRangeInTable(1)
     }
