@@ -42,9 +42,6 @@ Conectarse al COM de Excel es tan fácil como inicializar ExcelManager:
 ExcelMan := ExcelManager(true) ; 'true' permite leer y escribir en la misma hoja
 ```
 
-> [!warning]
-> Si Excel no está iniciado puede tardar más de la cuenta en permitir el acceso a su COM y lanzar un Error, ¡Reinténtalo!
-
 Lo único que necesitas para empezar a automatizar tus libros de trabajo,
 es definir una hoja de escritura y otra (o la misma) de lectura:
 

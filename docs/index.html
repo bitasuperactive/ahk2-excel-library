@@ -120,8 +120,7 @@ Ejemplo básico</h2>
 <div class="line">#Include &quot;Util\OrObject.ahk&quot;</div>
 </div><!-- fragment --><p>Conectarse al COM de Excel es tan fácil como inicializar <a class="el" href="class_excel_manager.html" title="Administrador para el COM de Microsoft Excel.">ExcelManager</a>:</p>
 <div class="fragment"><div class="line">ExcelMan := ExcelManager(true) ; &#39;true&#39; permite leer y escribir en la misma hoja</div>
-</div><!-- fragment --><dl class="section warning"><dt>Atención</dt><dd>Si Excel no está iniciado puede tardar más de la cuenta en permitir el acceso a su COM y lanzar un Error, ¡Reinténtalo!</dd></dl>
-<p>Lo único que necesitas para empezar a automatizar tus libros de trabajo, es definir una hoja de escritura y otra (o la misma) de lectura:</p>
+</div><!-- fragment --><p>Lo único que necesitas para empezar a automatizar tus libros de trabajo, es definir una hoja de escritura y otra (o la misma) de lectura:</p>
 <div class="fragment"><div class="line">;// Obtener los nombres de todos los libros `.xlsx` abiertos</div>
 <div class="line">workbookNames := ExcelMan.GetAllOpenWorkbooksNames()</div>
 <div class="line"> </div>
