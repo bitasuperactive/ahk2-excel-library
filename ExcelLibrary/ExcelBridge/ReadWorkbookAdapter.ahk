@@ -20,7 +20,7 @@
  * - Utils.ahk
  * @see https://github.com/bitasuperactive/ahk2-excel-library/blob/master/ExcelLibrary/ExcelBridge/ReadWorkbookAdapter.ahk
  ***********************************************************************/
-class ReadWorkbookAdapter
+class ReadWorkbookAdapter extends WorkbookWrapper
 {
     /**
      * @public

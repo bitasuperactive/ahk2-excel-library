@@ -15,7 +15,7 @@
  * @extends Object
  * @see https://github.com/bitasuperactive/ahk2-excel-library/blob/master/Util/OrObject.ahk
  ***********************************************************************/
-class OrObject
+class OrObject extends Object
 {
     /**
      * @private

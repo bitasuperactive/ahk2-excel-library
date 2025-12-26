@@ -14,7 +14,7 @@
  * - Utils.ahk
  * @see https://github.com/bitasuperactive/ahk2-excel-library/blob/master/ExcelLibrary/ExcelBridge/WriteWorkbookAdapter.ahk
  ***********************************************************************/
-class WriteWorkbookAdapter
+class WriteWorkbookAdapter extends WorkbookWrapper
 {
     /**
      * @public
