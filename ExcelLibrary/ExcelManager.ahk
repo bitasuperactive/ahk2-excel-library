@@ -36,6 +36,7 @@
  * - WriteWorkbookAdapter.ahk
  * - Utils.ahk
  * @see https://github.com/bitasuperactive/ahk2-excel-library/blob/master/ExcelLibrary/ExcelManager.ahk
+ * @internal Documentación web: https://bitasuperactive.github.io/ahk2-excel-library
  ***********************************************************************/
 class ExcelManager
 {

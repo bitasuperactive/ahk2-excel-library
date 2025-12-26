@@ -6,7 +6,7 @@
 
 **Excel Library** puede definirse como un adaptador entre los libros de trabajo de Microsoft Excel y <a href="https://www.autohotkey.com/v2/" target="_blank">⇱AutoHotkey V2</a>.
 
-Ha sido diseñada con un propóstio muy concreto en mente: Automatizar la lectura de datos locales y la escritura de datos externos mientras el usuario sigue trabajando manualmente en Excel. 
+**Ha sido diseñada con un propóstio muy concreto en mente:** Automatizar la lectura de datos locales y la escritura de datos externos mientras el usuario sigue trabajando manualmente en Excel. 
 
 La idea surgió de mi experiencia como administrativo en el sector BPO. Observé que gran parte de mi trabajo consistía en contrastar datos procedentes de múltiples fuentes web, y pensé que si pudiera automatizar la recopilación de toda esa información diaria, conseguiría deshacerme de la parte más boluptuosa y cargante de mi trabajo, pertimiéndome centrar mi atención en el análisis de la información, que es lo interesante.
 La primera parte de esta idea se consolida en **Excel Library**. La segunda consistirá en la integración de Google Chrome en una librería independiente.
@@ -100,4 +100,4 @@ Una vez hemos terminado de trabajar con los libros, podemos desconectarlos expl�
 
 #### 🚀 ¡Pruébalo en tu script!
 
-Hala, y ahora aremete sin miedo contra la [documentación de clases](https://bitasuperactive.github.io/ahk2-excel-library/). Ha sido escrita con mimo y es muy sencillita, espero que te sirva 😉.
+Hala, y ahora arremete sin miedo contra la [documentación de clases](https://bitasuperactive.github.io/ahk2-excel-library/). Ha sido escrita con mimo y es muy sencillita, espero que te sirva 😉.
