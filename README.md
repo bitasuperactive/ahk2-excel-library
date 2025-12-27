@@ -97,4 +97,4 @@ Una vez hemos terminado de trabajar con los libros, podemos desconectarlos expl�
 
 #### 🚀 ¡Pruébalo en tu script!
 
-Hala, y ahora arremete sin miedo contra la [documentación de clases](https://bitasuperactive.github.io/ahk2-excel-library/). Ha sido escrita con mimo y es muy sencillita, espero que te sirva 😉.
+Hala, y ahora arremete sin miedo contra la [documentación de clases](https://bitasuperactive.github.io/ahk2-excel-library/annotated.html). Ha sido escrita con mimo y es muy sencillita, espero que te sirva 😉.
